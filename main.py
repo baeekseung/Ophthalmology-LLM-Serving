@@ -6,6 +6,11 @@ from langchain_teddynote.prompts import load_prompt
 from langchain_core.output_parsers import StrOutputParser
 from langchain_huggingface import HuggingFacePipeline
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from langchain_teddynote import logging
+from langchain_teddynote.messages import stream_response
+from langchain_huggingface import HuggingFaceEndpoint
+
+logging.langsmith("Ophtimus-Web")
 
 load_dotenv()
 os.environ["TRANSFORMERS_CACHE"] = "./cache/"
@@ -31,24 +36,40 @@ def print_chat_history():
 def add_message(role, message):
     st.session_state.Chat_History.append(ChatMessage(role=role, content=message))
 
-def Ophtimus_chain():
+def Ophtimus_chain(selected_task):
     if selected_task == "Ophthalmology Diagnosis":
         prompt = load_prompt("prompts/Ophtimus_diagnosis.yaml", encoding="utf-8")
 
-        model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
-        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-        model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
-        Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
+        # model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
+        # tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+        # model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
+        # pipe = pipeline("text-generation", model=model_name, tokenizer=tokenizer, max_new_tokens=512)
+        # Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
+
+        hf_endpoint_url = "https://vsjtsipqov7izenf.us-east-1.aws.endpoints.huggingface.cloud"       
+        Ophtimus_model = HuggingFaceEndpoint(
+            # 엔드포인트 URL을 설정합니다.
+            endpoint_url=hf_endpoint_url,
+            max_new_tokens=1024,
+            temperature=0.01,
+        )
 
     elif selected_task == "Ophthalmology Q&A":
-        prompt = load_prompt("prompts/Ophtimus_Q&A.yaml", encoding="utf-8")
+        prompt = load_prompt("prompts/Ophtimus_QA.yaml", encoding="utf-8")
 
-        model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
-        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-        model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
-        Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
+        # model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
+        # tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+        # model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
+        # pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
+        # Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
+
+        hf_endpoint_url = "https://d2kp9g04i4a162pw.us-east-1.aws.endpoints.huggingface.cloud"       
+        Ophtimus_model = HuggingFaceEndpoint(
+            # 엔드포인트 URL을 설정합니다.
+            endpoint_url=hf_endpoint_url,
+            max_new_tokens=1024,
+            temperature=0.01,
+        )
 
     chain = prompt | Ophtimus_model | StrOutputParser()
     return chain
@@ -66,7 +87,7 @@ if user_input:
     st.chat_message("user").write(user_input)
 
     chain = Ophtimus_chain(selected_task)
-    response = chain.stream({"question": user_input})
+    response = chain.stream({"instruction": user_input})
 
     with st.chat_message("assistant"):
         container = st.empty()
