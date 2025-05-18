@@ -1,195 +1,164 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
+from transformers import AutoTokenizer
 from langchain_core.messages import ChatMessage
+from langchain_core.prompts import PromptTemplate
 from langchain_teddynote.prompts import load_prompt
 from langchain_core.output_parsers import StrOutputParser
-from langchain_huggingface import HuggingFacePipeline, HuggingFaceEndpoint
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-from langchain_teddynote import logging
+from langchain_huggingface import HuggingFacePipeline
 from langchain_teddynote.messages import stream_response
-import mysql.connector
-from datetime import datetime
-from langchain_openai import ChatOpenAI
+from langchain_huggingface import ChatHuggingFace
+from dotenv import load_dotenv
 
-logging.langsmith("Ophtimus-Web")
+# 삭제
+#----------------------------
+from langchain_openai import ChatOpenAI
+#----------------------------
 
 load_dotenv()
-os.environ["TRANSFORMERS_CACHE"] = "./cache/"
-os.environ["HF_HOME"] = "./cache/"
-hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-st.title("Ophthalmology Chatbot: Ophtimus")
+from langchain_teddynote import logging as lc_logging
+lc_logging.langsmith("Ophtimus-Web")
+
+CACHE_DIR = "./cache/"
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
 
 if "Chat_History" not in st.session_state:
     st.session_state["Chat_History"] = []
 
+# 두 개의 답변을 임시로 저장할 공간
+if "generated_answers" not in st.session_state:
+    st.session_state["generated_answers"] = []
+
 with st.sidebar:
+    st.markdown("## 설정")
     clear_button = st.button("remove chat history")
 
+    # 사용자가 모델(작업) 선택
     selected_task = st.selectbox(
-        "Select task", ("Ophthalmology Diagnosis", "Ophthalmology Q&A"), index=0
+        "Select model",
+        ("Ophtimus Diagnosis", "Ophtimus Q&A"),
+        index=0,
     )
 
+    if clear_button:
+        st.session_state.Chat_History = []
+        st.session_state.generated_answers = []
+        st.rerun()
 
 def print_chat_history():
-    for chat_history in st.session_state.Chat_History:
-        st.chat_message(chat_history.role).write(chat_history.content)
+    for chat in st.session_state.Chat_History:
+        st.chat_message(chat.role).write(chat.content)
 
 
-def add_message(role, message):
-    st.session_state.Chat_History.append(ChatMessage(role=role, content=message))
+def add_message(role: str, content: str):
+    st.session_state.Chat_History.append(ChatMessage(role=role, content=content))
 
 
-def Ophtimus_chain(selected_task):
-    if selected_task == "Ophthalmology Diagnosis":
+def create_ophtimus_chain(task: str):
+    if task == "Ophtimus Diagnosis":
         prompt = load_prompt("prompts/Ophtimus_diagnosis.yaml", encoding="utf-8")
 
-        # model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
-        # tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-        # model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
-        # pipe = pipeline("text-generation", model=model_name, tokenizer=tokenizer, max_new_tokens=512)
-        # Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
+        # hf = HuggingFacePipeline.from_model_id(
+        #     model_id="MinWook1125/Opthimus_MCQA_EQA_CR_5000",
+        #     task="text-generation",
+        #     pipeline_kwargs={
+        #         "max_new_tokens": 512,
+        #         "do_sample": True,
+        #         "temperature": 0.9,
+        #         "top_p": 0.95,
+        #     },
+        # )
+        # llm = ChatHuggingFace(llm=hf)
 
-        # hf_endpoint_url = (
-        #     "https://vsjtsipqov7izenf.us-east-1.aws.endpoints.huggingface.cloud"
-        # )
-        # Ophtimus_model = HuggingFaceEndpoint(
-        #     # 엔드포인트 URL을 설정합니다.
-        #     endpoint_url=hf_endpoint_url,
-        #     max_new_tokens=1024,
-        #     temperature=0.01,
-        # )
-        Ophtimus_model = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.01,
+        # 삭제
+        #----------------------------
+        llm = ChatOpenAI(
+            temperature=0.9,
+            model_name="gpt-4o",  # 모델명
         )
+        #----------------------------
 
-    elif selected_task == "Ophthalmology Q&A":
-        prompt = load_prompt("prompts/Ophtimus_QA.yaml", encoding="utf-8")
-
-        # model_name = "MinWook1125/Opthimus_MCQA_EQA_CR_5000"
-        # tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-        # model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
-        # pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
-        # Ophtimus_model = HuggingFacePipeline(pipeline=pipe)
-
-        # hf_endpoint_url = (
-        #     "https://d2kp9g04i4a162pw.us-east-1.aws.endpoints.huggingface.cloud"
-        # )
-        # Ophtimus_model = HuggingFaceEndpoint(
-        #     # 엔드포인트 URL을 설정합니다.
-        #     endpoint_url=hf_endpoint_url,
-        #     max_new_tokens=1024,
-        #     temperature=0.01,
-        # )
-
-        Ophtimus_model = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.01,
+    elif task == "Ophtimus Q&A":
+        tokenizer = AutoTokenizer.from_pretrained(
+            "meta-llama/Llama-3.1-8B-Instruct"
         )
+        chat_template = [
+            {"role": "system", "content": "You are an expert ophthalmologist. Please provide accurate and medically sound answers to the user's ophthalmology-related question."},
+            {"role": "user", "content": "{instruction}"},
+        ]
+        prompt_text = tokenizer.apply_chat_template(
+            chat_template,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        prompt = PromptTemplate.from_template(prompt_text)
 
-    chain = prompt | Ophtimus_model | StrOutputParser()
+        # hf = HuggingFacePipeline.from_model_id(
+        #     model_id="BaekSeungJu/Ophtimus-Llama-8B",
+        #     task="text-generation",
+        #     pipeline_kwargs={
+        #         "max_new_tokens": 512,
+        #         "do_sample": True,
+        #         "temperature": 0.9,
+        #         "top_p": 0.95,
+        #     },
+        # )
+        # llm = ChatHuggingFace(llm=hf)
+
+        # 삭제
+        #----------------------------
+        llm = ChatOpenAI(
+            temperature=0.9,
+            model_name="gpt-4o",  # 모델명
+        )
+        #----------------------------
+
+    chain = prompt | llm | StrOutputParser()
     return chain
 
 
-# MySQL 연결 설정
-def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="your_username",
-        password="your_password",
-        database="ophthalmology_qa",
-    )
+def generate_multiple_answers(question: str, chain, n: int = 2):
+    answers = []
+    for _ in range(n):
+        response_stream = chain.stream({"instruction": question})
+        answer = "".join(token for token in response_stream)
+        answers.append(answer)
+    return answers
 
-
-# 데이터베이스 테이블 생성
-def create_tables():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS qa_responses (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            question TEXT,
-            response1 TEXT,
-            response2 TEXT,
-            selected_response TEXT,
-            created_at DATETIME
-        )
-    """
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-
-# 응답 저장 함수
-def save_responses(question, response1, response2, selected_response):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO qa_responses (question, response1, response2, selected_response, created_at)
-        VALUES (%s, %s, %s, %s, %s)
-    """,
-        (question, response1, response2, selected_response, datetime.now()),
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-
-# 초기화 시 테이블 생성
-create_tables()
-
-if clear_button:
-    st.session_state.Chat_History = []
-    st.rerun()
-
+st.title("Ophthalmology Chatbot: Ophtimus")
 print_chat_history()
 
 user_input = st.chat_input("input your question")
 
 if user_input:
-    # 사용자 입력 출력
+    # 사용자 질문 표시
     st.chat_message("user").write(user_input)
 
-    chain = Ophtimus_chain(selected_task)
+    # 체인 생성 & 두 개의 답변 받기
+    chain = create_ophtimus_chain(selected_task)
+    with st.spinner("답변 생성 중…"):
+        answers = generate_multiple_answers(user_input, chain, n=2)
+        st.session_state.generated_answers = answers
 
-    # 두 개의 응답 생성
-    response1 = ""
-    response2 = ""
+    # 두 개 답변 나란히 표시
+    col1, col2 = st.columns(2)
+    for idx, col in enumerate((col1, col2)):
+        with col:
+            st.subheader(f"답변 {idx + 1}")
+            st.markdown(answers[idx])
 
-    with st.chat_message("assistant"):
-        st.write("응답 1:")
-        container1 = st.empty()
-        for token in chain.stream({"instruction": user_input}):
-            response1 += token
-            container1.markdown(response1)
-
-    with st.chat_message("assistant"):
-        st.write("응답 2:")
-        container2 = st.empty()
-        for token in chain.stream({"instruction": user_input}):
-            response2 += token
-            container2.markdown(response2)
-
-    # 응답 선택 UI
-    st.write("어떤 응답이 더 적절한가요?")
-    selected_response = st.radio(
-        "응답 선택", ["응답 1", "응답 2"], key="response_selection"
+    # 사용자 선택
+    selected_idx = st.radio(
+        "더 도움이 된 답변을 선택해주세요:",
+        options=[0, 1],
+        format_func=lambda i: f"답변 {i + 1}",
+        horizontal=True,
     )
 
-    # 선택된 응답 저장
-    if selected_response == "응답 1":
-        final_response = response1
-    else:
-        final_response = response2
-
-    # 데이터베이스에 저장
-    save_responses(user_input, response1, response2, final_response)
-
-    # 대화기록 저장
-    add_message("user", user_input)
-    add_message("assistant", final_response)
+    if st.button("이 답변 선택", key="select_answer"):
+        chosen_answer = answers[selected_idx]
+        add_message("assistant", f"**선택된 답변**\n\n{chosen_answer}")
+        add_message("user", user_input)
+        st.success("선택이 저장되었습니다!")
