@@ -11,28 +11,42 @@ from langchain_huggingface import ChatHuggingFace
 from dotenv import load_dotenv
 
 # 삭제
-#----------------------------
+# ----------------------------
 from langchain_openai import ChatOpenAI
-#----------------------------
+
+# ----------------------------
 
 load_dotenv()
 
 from langchain_teddynote import logging as lc_logging
+
 lc_logging.langsmith("Ophtimus-Web")
 
 CACHE_DIR = "./cache/"
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
+# 세션 상태 초기화
 if "Chat_History" not in st.session_state:
     st.session_state["Chat_History"] = []
 
-# 두 개의 답변을 임시로 저장할 공간
 if "generated_answers" not in st.session_state:
     st.session_state["generated_answers"] = []
 
+if "selected_answer" not in st.session_state:
+    st.session_state["selected_answer"] = None
+
+if "current_question" not in st.session_state:
+    st.session_state["current_question"] = None
+
+if "show_answers" not in st.session_state:
+    st.session_state["show_answers"] = False
+
+if "selected_idx" not in st.session_state:
+    st.session_state["selected_idx"] = None
+
 with st.sidebar:
-    st.markdown("## 설정")
+    st.markdown("## 대화기록 초기화")
     clear_button = st.button("remove chat history")
 
     # 사용자가 모델(작업) 선택
@@ -45,7 +59,12 @@ with st.sidebar:
     if clear_button:
         st.session_state.Chat_History = []
         st.session_state.generated_answers = []
+        st.session_state.selected_answer = None
+        st.session_state.current_question = None
+        st.session_state.show_answers = False
+        st.session_state.selected_idx = None
         st.rerun()
+
 
 def print_chat_history():
     for chat in st.session_state.Chat_History:
@@ -73,19 +92,20 @@ def create_ophtimus_chain(task: str):
         # llm = ChatHuggingFace(llm=hf)
 
         # 삭제
-        #----------------------------
+        # ----------------------------
         llm = ChatOpenAI(
             temperature=0.9,
             model_name="gpt-4o",  # 모델명
         )
-        #----------------------------
+        # ----------------------------
 
     elif task == "Ophtimus Q&A":
-        tokenizer = AutoTokenizer.from_pretrained(
-            "meta-llama/Llama-3.1-8B-Instruct"
-        )
+        tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
         chat_template = [
-            {"role": "system", "content": "You are an expert ophthalmologist. Please provide accurate and medically sound answers to the user's ophthalmology-related question."},
+            {
+                "role": "system",
+                "content": "You are an expert ophthalmologist. Please provide accurate and medically sound answers to the user's ophthalmology-related question.",
+            },
             {"role": "user", "content": "{instruction}"},
         ]
         prompt_text = tokenizer.apply_chat_template(
@@ -108,12 +128,12 @@ def create_ophtimus_chain(task: str):
         # llm = ChatHuggingFace(llm=hf)
 
         # 삭제
-        #----------------------------
+        # ----------------------------
         llm = ChatOpenAI(
             temperature=0.9,
             model_name="gpt-4o",  # 모델명
         )
-        #----------------------------
+        # ----------------------------
 
     chain = prompt | llm | StrOutputParser()
     return chain
@@ -127,6 +147,7 @@ def generate_multiple_answers(question: str, chain, n: int = 2):
         answers.append(answer)
     return answers
 
+
 st.title("Ophthalmology Chatbot: Ophtimus")
 print_chat_history()
 
@@ -135,19 +156,22 @@ user_input = st.chat_input("input your question")
 if user_input:
     # 사용자 질문 표시
     st.chat_message("user").write(user_input)
+    st.session_state.current_question = user_input
 
     # 체인 생성 & 두 개의 답변 받기
     chain = create_ophtimus_chain(selected_task)
     with st.spinner("답변 생성 중…"):
         answers = generate_multiple_answers(user_input, chain, n=2)
         st.session_state.generated_answers = answers
+        st.session_state.show_answers = True
 
+if st.session_state.show_answers and st.session_state.generated_answers:
     # 두 개 답변 나란히 표시
     col1, col2 = st.columns(2)
     for idx, col in enumerate((col1, col2)):
         with col:
             st.subheader(f"답변 {idx + 1}")
-            st.markdown(answers[idx])
+            st.markdown(st.session_state.generated_answers[idx])
 
     # 사용자 선택
     selected_idx = st.radio(
@@ -155,10 +179,19 @@ if user_input:
         options=[0, 1],
         format_func=lambda i: f"답변 {i + 1}",
         horizontal=True,
+        key="answer_selection",
     )
+    st.session_state.selected_idx = selected_idx
 
     if st.button("이 답변 선택", key="select_answer"):
-        chosen_answer = answers[selected_idx]
+        chosen_answer = st.session_state.generated_answers[
+            st.session_state.selected_idx
+        ]
+        st.session_state.selected_answer = chosen_answer
+        add_message("user", st.session_state.current_question)
         add_message("assistant", f"**선택된 답변**\n\n{chosen_answer}")
-        add_message("user", user_input)
+        st.session_state.show_answers = False
+        st.session_state.generated_answers = []
+        st.session_state.selected_idx = None
         st.success("선택이 저장되었습니다!")
+        st.rerun()
