@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+transformers
+torch
+langchain-core
+langchain-huggingface
+langchain-teddynote
+python-dotenv
