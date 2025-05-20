@@ -22,4 +22,4 @@ class ChatRequest(BaseModel):
 def chat(request: ChatRequest):
     chain = load_model(request.task)
     result = chain.invoke({"instruction": request.instruction})
-    return {"response": result}
+    return {"responce": result}

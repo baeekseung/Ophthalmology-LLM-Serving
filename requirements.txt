@@ -15,5 +15,6 @@ langchain-milvus
 langchain-text-splitters
 langchain-teddynote
 streamlit
-mysql-connector-python
 transformers
+fastapi
+uvicorn

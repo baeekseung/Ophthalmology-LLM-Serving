@@ -41,7 +41,7 @@ if user_input:
             "task": selected_task,
             "n": 2
         })
-        st.session_state.generated_answers = res.json()["answers"]
+        st.session_state.generated_answers = res.json()["response"]
         st.session_state.show_answers = True
 
 if st.session_state.show_answers and st.session_state.generated_answers:

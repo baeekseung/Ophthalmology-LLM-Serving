@@ -27,4 +27,4 @@ def generate_answers(req: ChatRequest):
         stream = chain.stream({"instruction": req.instruction})
         result = "".join(token for token in stream)
         answers.append(result)
-    return {"answers": answers}
+    return {"responce": answers}

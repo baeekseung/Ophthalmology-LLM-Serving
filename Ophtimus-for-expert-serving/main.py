@@ -38,6 +38,9 @@ if user_input:
         json={"instruction": user_input, "task": selected_task}
     )
 
+    # st.write("✅ 서버 응답 상태코드:", response.status_code)
+    # st.write("📦 서버 응답 본문:", response.text)
+
     result = response.json()
     ai_response = result["response"]
 
